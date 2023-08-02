@@ -1,104 +1,65 @@
-from cryptography.hazmat.primitives.ciphers import Cipher,algorithms,modes
-from cryptography.hazmat.backends import default_backend
-from math import ceil
-
-backend = default_backend()
-
-def strxor(a, b):  # xor two strings of different lengths
-  if len(a) > len(b):
-    return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a[:len(b)], b)])
-  else:
-    return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a, b[:len(a)])])
-
-def from_hex(s):
-    return ''.join([chr(int(''.join(c), 16)) for c in zip(s[0::2], s[1::2])])
-
-def to_hex(i):
-   return f'{i:x}'
+from cryptography.hazmat.primitives import hashes 
+from colorama import Fore,Style
+import sys 
+import os 
 
 
-def extract_IV(ciphertext): 
-    return ciphertext[0:32]
+def load_video(video_name):
+    video = open(video_name,'rb')
+    return video.read()
 
-def get_num_of_blocks(ciphertext):
-    return ceil(len(ciphertext)/32)
-
-def encrypt_IVs(IVb,ciphertext,keyb):
-    L = get_num_of_blocks(ciphertext)
+def compute_hashes(video):
+    video_size = os.path.getsize(video)
+    block_size = 1024 
   
+    f = open(video,'rb')
+
+    
+    last_block_size = video_size % block_size 
    
+
+    f.seek(-last_block_size,2) # from -last_blocksize to the end 
+    last_block = f.read()   # getting last block 
+    video_size-= last_block_size
+  
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(last_block) # hash last block 
+    hashed = digest.finalize()
+
     
-    algorithm = Cipher(algorithms.AES(keyb),modes.ECB(),backend)
-    encryptor = algorithm.encryptor()
-    decryptedx = ""
-    for i in range(0,L+1): 
-        encryptedb = encryptor.update(IVb)
-        decryptedx+= encryptedb.hex()  
-        IVb = bytes.fromhex(to_hex(int(IVb.hex(),16)+1)) 
-    encryptor.finalize()
-    return decryptedx 
+    while video_size > 0: 
+        
+        f.seek(video_size-block_size)
+        block = f.read(block_size)
+        
+        digest = hashes.Hash(hashes.SHA256())
+        digest.update(block+hashed)
+        hashed = digest.finalize()
+        
+        video_size-=block_size
+
     
-def CTR_d(ciphertext,key): 
+    return hashed
 
-    IV  = extract_IV(ciphertext)
-    IVb = bytes.fromhex(IV)
-
-    keyb = bytes.fromhex(key)
-
-    ciphertext_without_IV = ciphertext[32::]
-    encrypted_IVs = encrypt_IVs(IVb,ciphertext_without_IV,keyb)
-
-    return strxor(from_hex(encrypted_IVs),from_hex(ciphertext_without_IV))
-
-
-def CBC_d(ciphertext,key):
-    IV = extract_IV(ciphertext)
-    IVb = bytes.fromhex(IV)
-
-    keyb = bytes.fromhex(key)
-
-    ciphertext_without_IV = ciphertext[32::]
-
-    blocks = [ciphertext_without_IV[i:i+32] for i in range(0, len(ciphertext_without_IV), 32)]
-
-    algorithm = Cipher(algorithms.AES(keyb),modes.ECB(),backend)
-    decryptor = algorithm.decryptor()
-    decryptedx = ''
-    
-    old = IV 
-    for b in blocks:
-      decryptedb = decryptor.update(bytes.fromhex(b)) 
-      decryptedx += strxor(from_hex(decryptedb.hex()),from_hex(old))
-      old = b 
-
-    decryptor.finalize()  
-
-    ending = decryptedx[len(decryptedx)-1]
-    if ord(ending) <=31 and ord(ending)>=0:
-        decryptedx = decryptedx[0:len(decryptedx)-ord(ending)]
-    
-    return decryptedx
+     
 
 def main():
-    key1 = "140b41b22a29beb4061bda66b6747e14"
-    key2 = "36f18357be4dbd77f050515c73fcf9f2"
-  
-    cipher1 = "4ca00ff4c898d61e1edbf1800618fb2828a226d160dad07883d04e008a7897ee2e4b7465d5290d0c0e6c6822236e1daafb94ffe0c5da05d9476be028ad7c1d81"
-    cipher2 = "5b68629feb8606f9a6667670b75b38a5b4832d0f26e1ab7da33249de7d4afc48e713ac646ace36e872ad5fb8a512428a6e21364b0c374df45503473c5242a253"
-    cipher3 = "69dda8455c7dd4254bf353b773304eec0ec7702330098ce7f7520d1cbbb20fc388d1b0adb5054dbd7370849dbf0b88d393f252e764f1f5f7ad97ef79d59ce29f5f51eeca32eabedd9afa9329"
-    cipher4 = "770b80259ec33beb2561358a9f2dc617e46218c0a53cbeca695ae45faa8952aa0e311bde9d4e01726d3184c34451"
-     
-    m1 = CBC_d(cipher1,key1)
-    m2 = CBC_d(cipher2,key1)
-    m3 = CTR_d(cipher3,key2)
-    m4 = CTR_d(cipher4,key2)
+
+    video_name = '6.1.intro.mp4'
+
+    check_video = '6.2.birthday.mp4'
+    check_hash = '03c08f4ee0b576fe319338139c045c89c3e8e9409633bea29442e21425006ea8'
+
 
   
-    print("m1 = "+m1)
-    print("m2 = "+m2)
-    print("m3 = "+m3)
-    print("m4 = "+m4) 
-   
+    if check_hash == compute_hashes(check_video).hex():
+        print(f'Test {Fore.GREEN}PASSED{Style.RESET_ALL}')
+    else: 
+        print(f'Test {Fore.RED}FAILED{Style.RESET_ALL}')
+
+    print(compute_hashes(video_name).hex())
     
-main() 
 
+
+if __name__ == '__main__':
+    main() 
